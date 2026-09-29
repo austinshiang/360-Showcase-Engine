@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>360° 虛擬全景展示引擎 (GitHub Pages 版)</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Pannellum 360 Viewer CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000000;
+        }
+        #panorama {
+            width: 100vw;
+            height: 100vh;
+        }
+        /* Custom clean style for loading button */
+        .pnm-load-button {
+            background-color: rgba(14, 165, 233, 0.9) !important;
+            border-radius: 9999px !important;
+            border: none !important;
+            box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.5) !important;
+        }
+    </style>
+</head>
+<body class="h-full overflow-hidden select-none bg-black">
+
+    <!-- Fullscreen Pure 360 Panorama Container -->
+    <div id="panorama" class="w-full h-full"></div>
+
+    <script>
+        // Extract Google Drive File ID from various link formats
+        function extractDriveFileId(urlOrId) {
+            if (!urlOrId) return null;
+            const str = decodeURIComponent(urlOrId).trim();
+
+            if (/^[a-zA-Z0-9_-]{25,50}$/.test(str)) {
+                return str;
+            }
+
+            const matchFileD = str.match(/\/file\/d\/([a-zA-Z0-9_-]{25,50})/);
+            if (matchFileD && matchFileD[1]) return matchFileD[1];
+
+            const matchIdQuery = str.match(/[?&]id=([a-zA-Z0-9_-]{25,50})/);
+            if (matchIdQuery && matchIdQuery[1]) return matchIdQuery[1];
+
+            const matchLh3 = str.match(/\/d\/([a-zA-Z0-9_-]{25,50})/);
+            if (matchLh3 && matchLh3[1]) return matchLh3[1];
+
+            return null;
+        }
+
+        // Initialize Pure 360 Viewer on Window Load
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const rawUrlParam = urlParams.get('url') || urlParams.get('drive_url') || urlParams.get('panorama');
+            const driveIdParam = urlParams.get('id');
+
+            // Default fallback scene if no URL parameter is provided
+            let panoramaUrl = 'https://pannellum.org/images/alma.jpg';
+
+            let targetDriveId = null;
+            if (rawUrlParam) {
+                targetDriveId = extractDriveFileId(rawUrlParam);
+                if (!targetDriveId && rawUrlParam.startsWith('http')) {
+                    panoramaUrl = rawUrlParam;
+                }
+            } else if (driveIdParam) {
+                targetDriveId = extractDriveFileId(driveIdParam);
+            }
+
+            if (targetDriveId) {
+                panoramaUrl = `https://lh3.googleusercontent.com/d/${targetDriveId}`;
+            }
+
+            // Initialize Pannellum Viewer with zero extra controls/UI
+            pannellum.viewer('panorama', {
+                "type": "equirectangular",
+                "panorama": panoramaUrl,
+                "autoLoad": true,
+                "autoRotate": -1.5,
+                "compass": false,
+                "showZoomCtrl": false,
+                "mouseZoom": true,
+                "hfov": 100,
+                "minHfov": 50,
+                "maxHfov": 120
+            });
+        });
+    </script>
+</body>
+</html>
