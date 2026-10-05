@@ -3,295 +3,244 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>360° 實境賞車渲染引擎</title>
+    <title>360° 實境賞車全景展示引擎</title>
+    
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Pannellum 360 Viewer CDN -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
-    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
-    <!-- FontAwesome Icons -->
+    <!-- FontAwesome CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-        html, body {
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #000;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-        #panorama {
-            width: 100vw;
-            height: 100vh;
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 1;
-        }
-        .glass-panel {
-            background: rgba(15, 23, 42, 0.75);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-        }
-        .pnm-controls-container {
-            display: none !important; /* 隱藏原生按鈕，使用自訂精美UI */
-        }
-        .pnm-dragfix {
-            cursor: grab !important;
-        }
-        .pnm-dragfix:active {
-            cursor: grabbing !important;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght=700;900&family=Noto+Sans+TC:wght=400;700;900&display=swap');
+        body { font-family: 'Noto Sans TC', 'Urbanist', sans-serif; background-color: #030712; color: #f9fafb; overflow: hidden; }
+        .glass-panel { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12); }
     </style>
 </head>
-<body class="select-none text-white">
+<body class="w-screen h-screen relative select-none">
+    <div id="canvas-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
 
-    <div id="panorama"></div>
-
-    <header class="fixed top-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
-        <div class="glass-panel rounded-2xl px-4 py-2.5 flex items-center gap-3 pointer-events-auto shadow-2xl">
-            <div class="w-8 h-8 rounded-xl bg-indigo-600/80 flex items-center justify-center text-white font-bold text-sm shadow-inner">
-                <i class="fa-solid fa-vr-cardboard text-lg"></i>
+    <!-- Header Control Bar -->
+    <div class="absolute top-4 inset-x-4 max-w-4xl mx-auto z-20 flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl glass-panel shadow-2xl">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-amber-300 flex items-center justify-center text-lg shadow-lg">
+                <i class="fa-solid fa-vr-cardboard"></i>
             </div>
             <div>
-                <h1 id="car-title" class="text-sm md:text-base font-semibold text-white tracking-wide truncate max-w-[180px] sm:max-w-xs md:max-w-md">
-                    360° 車內實景賞車
-                </h1>
-                <p id="car-subtitle" class="text-[11px] text-slate-300 font-medium flex items-center gap-1">
-                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    原圖 8K 高解析度渲染中
-                </p>
+                <h1 id="viewer-title" class="text-sm md:text-base font-black truncate max-w-[200px] sm:max-w-xs">360° 全景賞車</h1>
+                <p class="text-[10px] text-slate-400 font-bold">全方位 720° 自由探索 ｜ Google Drive 原圖直連</p>
             </div>
         </div>
 
-        <div class="hidden sm:flex glass-panel rounded-2xl px-3.5 py-2 items-center gap-2 text-xs font-medium text-slate-200">
-            <i class="fa-solid fa-arrows-up-down-left-right text-indigo-400"></i>
-            <span>支援 720° 全方位俯仰旋轉</span>
-        </div>
-    </header>
-
-    <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-auto">
-        <div class="glass-panel rounded-full px-4 py-2 flex items-center gap-3 shadow-2xl border border-white/20">
-            <button id="btn-reset" title="重置視角" class="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 active:scale-95 transition text-white">
-                <i class="fa-solid fa-rotate-left text-sm"></i>
+        <div class="flex items-center gap-2">
+            <button onclick="toggleAutoRotate()" id="btn-autorotate" class="bg-white/10 hover:bg-white/20 text-white text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-all">
+                <i class="fa-solid fa-arrows-spin text-amber-400"></i> <span class="hidden sm:inline">自動旋轉</span>
             </button>
-
-            <button id="btn-autorotate" title="自動旋轉" class="w-10 h-10 rounded-full flex items-center justify-center bg-indigo-600/80 hover:bg-indigo-600 active:scale-95 transition text-white">
-                <i id="autorotate-icon" class="fa-solid fa-pause text-sm"></i>
+            <button onclick="resetView()" class="bg-white/10 hover:bg-white/20 text-white text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-all">
+                <i class="fa-solid fa-rotate-left"></i> <span class="hidden sm:inline">重置角度</span>
             </button>
-
-            <div class="h-5 w-[1px] bg-white/20 my-auto"></div>
-
-            <button id="btn-zoom-in" title="放大近看" class="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 active:scale-95 transition text-white">
-                <i class="fa-solid fa-plus text-sm"></i>
-            </button>
-
-            <button id="btn-zoom-out" title="拉遠視角" class="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 active:scale-95 transition text-white">
-                <i class="fa-solid fa-minus text-sm"></i>
-            </button>
-
-            <div class="h-5 w-[1px] bg-white/20 my-auto"></div>
-
-            <button id="btn-fullscreen" title="全螢幕" class="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 active:scale-95 transition text-white">
-                <i class="fa-solid fa-expand text-sm"></i>
+            <button onclick="toggleFullscreen()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3.5 py-2 rounded-xl font-black flex items-center gap-1.5 transition-all shadow-md">
+                <i class="fa-solid fa-expand"></i> <span class="hidden sm:inline">全螢幕</span>
             </button>
         </div>
     </div>
 
-    <div id="loading-overlay" class="fixed inset-0 z-20 bg-slate-950 flex flex-col items-center justify-center gap-4 transition-opacity duration-500">
-        <div class="relative w-16 h-16">
-            <div class="absolute inset-0 rounded-full border-4 border-indigo-500/20"></div>
-            <div class="absolute inset-0 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin"></div>
-        </div>
-        <div class="text-center space-y-1">
-            <p id="loading-text" class="text-base font-medium text-white tracking-wider">載入原圖 360° 全景高畫質...</p>
-            <p class="text-xs text-slate-400">正在獲取最高解析度圖像檔案 (請稍候)</p>
-        </div>
+    <!-- Loading Overlay -->
+    <div id="loading-box" class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center text-white gap-4 z-30 transition-opacity">
+        <i class="fa-solid fa-circle-notch fa-spin text-5xl text-indigo-500"></i>
+        <p class="text-sm font-black text-slate-200">正在加載 360° 高畫質全景照片...</p>
     </div>
 
-    <!-- 新增：讀取失敗診斷彈窗 -->
-    <div id="error-overlay" class="hidden fixed inset-0 z-30 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-        <div class="glass-panel max-w-md w-full rounded-2xl p-6 text-center space-y-4 shadow-2xl border border-rose-500/30">
-            <div class="w-12 h-12 bg-rose-500/20 rounded-full flex items-center justify-center mx-auto text-rose-400 text-xl">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-            </div>
-            <div>
-                <h3 class="text-lg font-bold text-white">無法讀取 360° 全景照片</h3>
-                <p id="error-desc" class="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                    圖片載入失敗，通常是因為 Google 雲端硬碟權限未開啟或網址格式有誤。
-                </p>
-            </div>
-            
-            <div class="bg-slate-900/80 rounded-xl p-3 text-left text-xs text-slate-300 space-y-2 border border-white/10">
-                <p class="font-semibold text-amber-400 flex items-center gap-1.5">
-                    <i class="fa-solid fa-lightbulb"></i> 請檢查以下設定：
-                </p>
-                <ol class="list-decimal list-inside space-y-1 text-[11px] text-slate-300">
-                    <td>進入 Google 雲端硬碟找到該照片</td>
-                    <td>點選右鍵 ➔ 選擇<b>「分享」</b></td>
-                    <td>將一般存取權改為<b>「知道連結的人皆可檢視」</b></td>
-                    <td>複製連結並再次貼上使用</td>
-                </ol>
-            </div>
-
-            <div class="flex gap-2">
-                <button onclick="location.reload()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-medium text-xs transition shadow-lg">
-                    <i class="fa-solid fa-rotate-right mr-1"></i> 重新載入
-                </button>
-                <button onclick="useFallbackDemo()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-medium text-xs transition border border-white/10">
-                    載入範例預覽
-                </button>
-            </div>
+    <!-- Error Fallback Modal -->
+    <div id="error-box" class="hidden absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center text-white p-6 text-center gap-3 z-40">
+        <div class="w-16 h-16 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center text-3xl mb-1">
+            <i class="fa-solid fa-triangle-exclamation"></i>
         </div>
+        <h3 class="text-lg font-black">無法載入此 360 照片</h3>
+        <p class="text-xs text-slate-300 max-w-md leading-relaxed">請檢查權限是否已開啟「知道連結的任何人皆可檢視」。</p>
+        <button onclick="loadDemoImage()" class="mt-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black px-5 py-3 rounded-xl transition-all shadow-lg">
+            載入示範圖檔測試
+        </button>
     </div>
 
     <script>
-        let currentViewer = null;
-        let tryFallbackCount = 0;
+        const demoPanoramaUrl = "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/2294472375_24a3b8ef46_o.jpg";
 
-        // 提取 Google Drive File ID
-        function extractDriveId(input) {
-            if (!input) return null;
-            let str = String(input).trim();
-            const driveMatch = str.match(/(?:file\/d\/|id=|lh3\.googleusercontent\.com\/d\/|uc\?id=)([a-zA-Z0-9_-]{25,})/i) 
-                            || str.match(/\/d\/([a-zA-Z0-9_-]{25,})/i)
-                            || str.match(/id=([a-zA-Z0-9_-]{25,})/i);
-            return driveMatch ? driveMatch[1] : null;
-        }
+        let scene, camera, renderer, mesh;
+        let isUserInteracting = false;
+        let onPointerDownPointerX = 0, onPointerDownPointerY = 0;
+        let lon = 0, onPointerDownLon = 0;
+        let lat = 0, onPointerDownLat = 0;
+        let phi = 0, theta = 0;
+        let fov = 75;
+        let autoRotate = false;
 
-        // 產生高品質直連 URL (多重相容)
-        function getDriveUrlVariants(fileId) {
-            if (!fileId) return [];
-            return [
-                `https://lh3.googleusercontent.com/d/${fileId}`,                      // 首選高畫質 CDN
-                `https://drive.google.com/thumbnail?id=${fileId}&sz=w8192`,          // 備用大圖 Thumbnail
-                `https://drive.google.com/uc?export=view&id=${fileId}`               // 傳統 View 管道
-            ];
-        }
-
-        function showErrorModal(message) {
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) overlay.remove();
-            
-            const errorOverlay = document.getElementById('error-overlay');
-            if (message) {
-                document.getElementById('error-desc').textContent = message;
-            }
-            errorOverlay.classList.remove('hidden');
-        }
-
-        function useFallbackDemo() {
-            window.location.href = window.location.pathname;
-        }
-
-        window.addEventListener('DOMContentLoaded', () => {
+        window.onload = () => {
             const urlParams = new URLSearchParams(window.location.search);
-            const rawUrl = urlParams.get('url') || urlParams.get('id') || urlParams.get('img');
-            const title = urlParams.get('title') || '360° 車內實景賞車';
+            const rawUrl = urlParams.get('url');
+            const title = urlParams.get('title') || '360° 實境賞車';
 
-            if (title) {
-                document.getElementById('car-title').textContent = title;
+            document.getElementById('viewer-title').innerText = title;
+
+            let imageUrl = demoPanoramaUrl;
+            if (rawUrl) {
+                imageUrl = parseDirectImageUrl(rawUrl);
             }
 
-            const driveId = extractDriveId(rawUrl);
-            let panoramaUrl = '';
+            init360Viewer(imageUrl);
+        };
 
-            if (driveId) {
-                // 如果是 Google Drive，取得網址清單
-                const variants = getDriveUrlVariants(driveId);
-                panoramaUrl = variants[0];
-            } else if (rawUrl) {
-                panoramaUrl = rawUrl;
+        function parseDirectImageUrl(src) {
+            if (!src) return demoPanoramaUrl;
+            let clean = String(src).trim().replace(/^["']|["']$/g, '');
+            const driveMatch = clean.match(/(?:file\/d\/|id=|lh3\.googleusercontent\.com\/d\/|uc\?id=)([a-zA-Z0-9_-]{25,})/i) 
+                            || clean.match(/\/d\/([a-zA-Z0-9_-]{25,})/i);
+            if (driveMatch && driveMatch[1]) {
+                return `https://lh3.googleusercontent.com/d/${driveMatch[1]}=s0`;
+            }
+            return clean;
+        }
+
+        function init360Viewer(imageUrl) {
+            const container = document.getElementById('canvas-container');
+            const loadingBox = document.getElementById('loading-box');
+            const errorBox = document.getElementById('error-box');
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(fov, width / height, 1, 1100);
+            camera.target = new THREE.Vector3(0, 0, 0);
+
+            const geometry = new THREE.SphereGeometry(500, 60, 40);
+            geometry.scale(-1, 1, 1);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(width, height);
+            container.appendChild(renderer.domElement);
+
+            const loader = new THREE.TextureLoader();
+            loader.setCrossOrigin('anonymous');
+
+            loader.load(
+                imageUrl,
+                function (texture) {
+                    texture.minFilter = THREE.LinearFilter;
+                    const material = new THREE.MeshBasicMaterial({ map: texture });
+                    mesh = new THREE.Mesh(geometry, material);
+                    scene.add(mesh);
+
+                    loadingBox.classList.add('opacity-0', 'pointer-events-none');
+                    animate();
+                },
+                undefined,
+                function (err) {
+                    console.error("360 載入失敗：", err);
+                    loadingBox.classList.add('opacity-0', 'pointer-events-none');
+                    errorBox.classList.remove('hidden');
+                }
+            );
+
+            setupInteractionListeners(container);
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function setupInteractionListeners(container) {
+            const dom = renderer.domElement;
+
+            const onPointerDown = (e) => {
+                isUserInteracting = true;
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                onPointerDownPointerX = clientX;
+                onPointerDownPointerY = clientY;
+                onPointerDownLon = lon;
+                onPointerDownLat = lat;
+            };
+
+            const onPointerMove = (e) => {
+                if (!isUserInteracting) return;
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                lon = (onPointerDownPointerX - clientX) * 0.15 + onPointerDownLon;
+                lat = (clientY - onPointerDownPointerY) * 0.15 + onPointerDownLat;
+            };
+
+            const onPointerUp = () => { isUserInteracting = false; };
+
+            const onWheel = (e) => {
+                fov += e.deltaY * 0.05;
+                fov = Math.max(30, Math.min(100, fov));
+                camera.fov = fov;
+                camera.updateProjectionMatrix();
+            };
+
+            dom.addEventListener('mousedown', onPointerDown);
+            dom.addEventListener('mousemove', onPointerMove);
+            window.addEventListener('mouseup', onPointerUp);
+
+            dom.addEventListener('touchstart', onPointerDown, { passive: true });
+            dom.addEventListener('touchmove', onPointerMove, { passive: true });
+            window.addEventListener('touchend', onPointerUp);
+
+            dom.addEventListener('wheel', onWheel, { passive: true });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (autoRotate && !isUserInteracting) {
+                lon += 0.15;
+            }
+
+            lat = Math.max(-85, Math.min(85, lat));
+            phi = THREE.MathUtils.degToRad(90 - lat);
+            theta = THREE.MathUtils.degToRad(lon);
+
+            camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+            camera.target.y = 500 * Math.cos(phi);
+            camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+
+            camera.lookAt(camera.target);
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function resetView() {
+            lon = 0; lat = 0; fov = 75;
+            camera.fov = fov;
+            camera.updateProjectionMatrix();
+        }
+
+        function toggleAutoRotate() {
+            autoRotate = !autoRotate;
+            const btn = document.getElementById('btn-autorotate');
+            if (autoRotate) {
+                btn.classList.add('bg-indigo-600', 'text-amber-300');
             } else {
-                // 預設示範圖
-                panoramaUrl = 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=3000&q=80';
+                btn.classList.remove('bg-indigo-600', 'text-amber-300');
             }
+        }
 
-            function loadPannellum(url) {
-                currentViewer = pannellum.viewer('panorama', {
-                    "type": "equirectangular",
-                    "panorama": url,
-                    "autoLoad": true,
-                    "autoRotate": -1.2,
-                    "autoRotateInactivityDelay": 4000,
-                    "compass": false,
-                    "showControls": false,
-                    "hfov": 75,
-                    "minHfov": 35,
-                    "maxHfov": 85,
-                    "minPitch": -85,
-                    "maxPitch": 85,
-                    "friction": 0.15,
-
-                    "onLoad": () => {
-                        const overlay = document.getElementById('loading-overlay');
-                        if (overlay) {
-                            overlay.classList.add('opacity-0');
-                            setTimeout(() => overlay.remove(), 500);
-                        }
-                    },
-
-                    "onError": (errorMsg) => {
-                        console.warn('Pannellum 載入失敗，嘗試備用圖源:', errorMsg);
-                        
-                        // 若首次失敗且為 Google Drive，嘗試備用 URL 管道
-                        if (driveId && tryFallbackCount === 0) {
-                            tryFallbackCount++;
-                            const fallbackUrl = getDriveUrlVariants(driveId)[1];
-                            loadPannellum(fallbackUrl);
-                        } else {
-                            showErrorModal('圖片無法載入，請確認 Google Drive 照片存取權限已設為「知道連結的人皆可檢視」。');
-                        }
-                    }
-                });
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
             }
+        }
 
-            loadPannellum(panoramaUrl);
-
-            let isAutoRotating = true;
-
-            document.getElementById('btn-reset').addEventListener('click', () => {
-                if (currentViewer) {
-                    currentViewer.setPitch(0);
-                    currentViewer.setYaw(0);
-                    currentViewer.setHfov(75);
-                }
-            });
-
-            document.getElementById('btn-autorotate').addEventListener('click', () => {
-                const icon = document.getElementById('autorotate-icon');
-                if (!currentViewer) return;
-                
-                if (isAutoRotating) {
-                    currentViewer.stopAutoRotate();
-                    icon.className = "fa-solid fa-play text-sm";
-                    isAutoRotating = false;
-                } else {
-                    currentViewer.startAutoRotate(-1.2);
-                    icon.className = "fa-solid fa-pause text-sm";
-                    isAutoRotating = true;
-                }
-            });
-
-            document.getElementById('btn-zoom-in').addEventListener('click', () => {
-                if (currentViewer) currentViewer.setHfov(currentViewer.getHfov() - 10);
-            });
-
-            document.getElementById('btn-zoom-out').addEventListener('click', () => {
-                if (currentViewer) currentViewer.setHfov(currentViewer.getHfov() + 10);
-            });
-
-            document.getElementById('btn-fullscreen').addEventListener('click', () => {
-                if (currentViewer) currentViewer.toggleFullscreen();
-            });
-        });
+        function loadDemoImage() {
+            location.href = `?url=${encodeURIComponent(demoPanoramaUrl)}&title=示範全景測試圖`;
+        }
     </script>
 </body>
 </html>
