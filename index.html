@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>360° 實境</title>
+    <title>360° 實境賞車渲染引擎</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Pannellum 360 Viewer CDN -->
@@ -111,31 +111,84 @@
             <div class="absolute inset-0 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin"></div>
         </div>
         <div class="text-center space-y-1">
-            <p class="text-base font-medium text-white tracking-wider">載入原圖 360° 全景高畫質...</p>
+            <p id="loading-text" class="text-base font-medium text-white tracking-wider">載入原圖 360° 全景高畫質...</p>
             <p class="text-xs text-slate-400">正在獲取最高解析度圖像檔案 (請稍候)</p>
         </div>
     </div>
 
-    <script>
-        // Google Drive 圖片直連解析 (附加 =s0 強制輸出原圖最高解析度)
-        function parseGoogleDriveUrl(input) {
-            if (!input) return '';
-            let str = String(input).trim();
+    <!-- 新增：讀取失敗診斷彈窗 -->
+    <div id="error-overlay" class="hidden fixed inset-0 z-30 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="glass-panel max-w-md w-full rounded-2xl p-6 text-center space-y-4 shadow-2xl border border-rose-500/30">
+            <div class="w-12 h-12 bg-rose-500/20 rounded-full flex items-center justify-center mx-auto text-rose-400 text-xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-white">無法讀取 360° 全景照片</h3>
+                <p id="error-desc" class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                    圖片載入失敗，通常是因為 Google 雲端硬碟權限未開啟或網址格式有誤。
+                </p>
+            </div>
+            
+            <div class="bg-slate-900/80 rounded-xl p-3 text-left text-xs text-slate-300 space-y-2 border border-white/10">
+                <p class="font-semibold text-amber-400 flex items-center gap-1.5">
+                    <i class="fa-solid fa-lightbulb"></i> 請檢查以下設定：
+                </p>
+                <ol class="list-decimal list-inside space-y-1 text-[11px] text-slate-300">
+                    <td>進入 Google 雲端硬碟找到該照片</td>
+                    <td>點選右鍵 ➔ 選擇<b>「分享」</b></td>
+                    <td>將一般存取權改為<b>「知道連結的人皆可檢視」</b></td>
+                    <td>複製連結並再次貼上使用</td>
+                </ol>
+            </div>
 
+            <div class="flex gap-2">
+                <button onclick="location.reload()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-medium text-xs transition shadow-lg">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> 重新載入
+                </button>
+                <button onclick="useFallbackDemo()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-medium text-xs transition border border-white/10">
+                    載入範例預覽
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentViewer = null;
+        let tryFallbackCount = 0;
+
+        // 提取 Google Drive File ID
+        function extractDriveId(input) {
+            if (!input) return null;
+            let str = String(input).trim();
             const driveMatch = str.match(/(?:file\/d\/|id=|lh3\.googleusercontent\.com\/d\/|uc\?id=)([a-zA-Z0-9_-]{25,})/i) 
                             || str.match(/\/d\/([a-zA-Z0-9_-]{25,})/i)
                             || str.match(/id=([a-zA-Z0-9_-]{25,})/i);
+            return driveMatch ? driveMatch[1] : null;
+        }
 
-            if (driveMatch && driveMatch[1]) {
-                // 加強：=s0 強制要求 Google CDN 傳送原圖原始最高解析度（消除 1600px 縮圖馬賽克）
-                return `https://lh3.googleusercontent.com/d/${driveMatch[1]}=s0`;
+        // 產生高品質直連 URL (多重相容)
+        function getDriveUrlVariants(fileId) {
+            if (!fileId) return [];
+            return [
+                `https://lh3.googleusercontent.com/d/${fileId}`,                      // 首選高畫質 CDN
+                `https://drive.google.com/thumbnail?id=${fileId}&sz=w8192`,          // 備用大圖 Thumbnail
+                `https://drive.google.com/uc?export=view&id=${fileId}`               // 傳統 View 管道
+            ];
+        }
+
+        function showErrorModal(message) {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) overlay.remove();
+            
+            const errorOverlay = document.getElementById('error-overlay');
+            if (message) {
+                document.getElementById('error-desc').textContent = message;
             }
+            errorOverlay.classList.remove('hidden');
+        }
 
-            if (str.includes('imgur.com') && !str.match(/\.(jpg|jpeg|png|webp)$/i)) {
-                return str + '.jpg';
-            }
-
-            return str;
+        function useFallbackDemo() {
+            window.location.href = window.location.pathname;
         }
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -147,69 +200,96 @@
                 document.getElementById('car-title').textContent = title;
             }
 
-            // 預設圖片 (若無網址參數傳入)
-            const panoramaUrl = rawUrl ? parseGoogleDriveUrl(rawUrl) : 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=3000&q=80';
+            const driveId = extractDriveId(rawUrl);
+            let panoramaUrl = '';
 
-            // 初始化 Pannellum 全景視窗
-            const viewer = pannellum.viewer('panorama', {
-                "type": "equirectangular",
-                "panorama": panoramaUrl,
-                "autoLoad": true,
-                "autoRotate": -1.2,              // 緩慢自動轉動展示
-                "autoRotateInactivityDelay": 4000, // 無操作 4 秒後恢復自動轉動
-                "compass": false,
-                "showControls": false,           // 使用自訂 UI
+            if (driveId) {
+                // 如果是 Google Drive，取得網址清單
+                const variants = getDriveUrlVariants(driveId);
+                panoramaUrl = variants[0];
+            } else if (rawUrl) {
+                panoramaUrl = rawUrl;
+            } else {
+                // 預設示範圖
+                panoramaUrl = 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=3000&q=80';
+            }
 
-                /* 🔻 畫質與防變形黃金透視參數 🔻 */
-                "hfov": 75,                       // 預設人眼自然視角 (75 度)
-                "minHfov": 35,                    // 允許放大近看縫線與儀表板細節
-                "maxHfov": 85,                    // 限制拉最遠極限 (防止魚眼拉扯)
+            function loadPannellum(url) {
+                currentViewer = pannellum.viewer('panorama', {
+                    "type": "equirectangular",
+                    "panorama": url,
+                    "autoLoad": true,
+                    "autoRotate": -1.2,
+                    "autoRotateInactivityDelay": 4000,
+                    "compass": false,
+                    "showControls": false,
+                    "hfov": 75,
+                    "minHfov": 35,
+                    "maxHfov": 85,
+                    "minPitch": -85,
+                    "maxPitch": 85,
+                    "friction": 0.15,
 
-                /* 🔻 解鎖 720° 上下俯仰全視角 (低頭看鞍座、抬頭看天窗) 🔻 */
-                "minPitch": -85,                  // 向下俯視車底腳踏墊極限 (-85度)
-                "maxPitch": 85,                   // 向上仰視天窗頂棚極限 (+85度)
-                "friction": 0.15,                 // 旋轉滑順感
+                    "onLoad": () => {
+                        const overlay = document.getElementById('loading-overlay');
+                        if (overlay) {
+                            overlay.classList.add('opacity-0');
+                            setTimeout(() => overlay.remove(), 500);
+                        }
+                    },
 
-                "onLoad": () => {
-                    const overlay = document.getElementById('loading-overlay');
-                    if (overlay) {
-                        overlay.classList.add('opacity-0');
-                        setTimeout(() => overlay.remove(), 500);
+                    "onError": (errorMsg) => {
+                        console.warn('Pannellum 載入失敗，嘗試備用圖源:', errorMsg);
+                        
+                        // 若首次失敗且為 Google Drive，嘗試備用 URL 管道
+                        if (driveId && tryFallbackCount === 0) {
+                            tryFallbackCount++;
+                            const fallbackUrl = getDriveUrlVariants(driveId)[1];
+                            loadPannellum(fallbackUrl);
+                        } else {
+                            showErrorModal('圖片無法載入，請確認 Google Drive 照片存取權限已設為「知道連結的人皆可檢視」。');
+                        }
                     }
-                }
-            });
+                });
+            }
+
+            loadPannellum(panoramaUrl);
 
             let isAutoRotating = true;
 
             document.getElementById('btn-reset').addEventListener('click', () => {
-                viewer.setPitch(0);
-                viewer.setYaw(0);
-                viewer.setHfov(75);
+                if (currentViewer) {
+                    currentViewer.setPitch(0);
+                    currentViewer.setYaw(0);
+                    currentViewer.setHfov(75);
+                }
             });
 
             document.getElementById('btn-autorotate').addEventListener('click', () => {
                 const icon = document.getElementById('autorotate-icon');
+                if (!currentViewer) return;
+                
                 if (isAutoRotating) {
-                    viewer.stopAutoRotate();
+                    currentViewer.stopAutoRotate();
                     icon.className = "fa-solid fa-play text-sm";
                     isAutoRotating = false;
                 } else {
-                    viewer.startAutoRotate(-1.2);
+                    currentViewer.startAutoRotate(-1.2);
                     icon.className = "fa-solid fa-pause text-sm";
                     isAutoRotating = true;
                 }
             });
 
             document.getElementById('btn-zoom-in').addEventListener('click', () => {
-                viewer.setHfov(viewer.getHfov() - 10);
+                if (currentViewer) currentViewer.setHfov(currentViewer.getHfov() - 10);
             });
 
             document.getElementById('btn-zoom-out').addEventListener('click', () => {
-                viewer.setHfov(viewer.getHfov() + 10);
+                if (currentViewer) currentViewer.setHfov(currentViewer.getHfov() + 10);
             });
 
             document.getElementById('btn-fullscreen').addEventListener('click', () => {
-                viewer.toggleFullscreen();
+                if (currentViewer) currentViewer.toggleFullscreen();
             });
         });
     </script>
