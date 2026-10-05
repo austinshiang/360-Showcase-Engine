@@ -1,121 +1,215 @@
 <!DOCTYPE html>
-<html lang="zh-TW" class="h-full bg-slate-950 text-slate-100">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>360° 虛擬全景展示引擎 (GitHub Pages 版)</title>
-
+    <title>360° 實境</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        brand: {
-                            50: '#f0f9ff',
-                            400: '#38bdf8',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            700: '#0369a1',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-
     <!-- Pannellum 360 Viewer CDN -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
-
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
         html, body {
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #000000;
+            background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
         #panorama {
             width: 100vw;
             height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
         }
-        /* Custom clean style for loading button */
-        .pnm-load-button {
-            background-color: rgba(14, 165, 233, 0.9) !important;
-            border-radius: 9999px !important;
-            border: none !important;
-            box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.5) !important;
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .pnm-controls-container {
+            display: none !important; /* 隱藏原生按鈕，使用自訂精美UI */
+        }
+        .pnm-dragfix {
+            cursor: grab !important;
+        }
+        .pnm-dragfix:active {
+            cursor: grabbing !important;
         }
     </style>
 </head>
-<body class="h-full overflow-hidden select-none bg-black">
+<body class="select-none text-white">
 
-    <!-- Fullscreen Pure 360 Panorama Container -->
-    <div id="panorama" class="w-full h-full"></div>
+    <div id="panorama"></div>
+
+    <header class="fixed top-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
+        <div class="glass-panel rounded-2xl px-4 py-2.5 flex items-center gap-3 pointer-events-auto shadow-2xl">
+            <div class="w-8 h-8 rounded-xl bg-indigo-600/80 flex items-center justify-center text-white font-bold text-sm shadow-inner">
+                <i class="fa-solid fa-vr-cardboard text-lg"></i>
+            </div>
+            <div>
+                <h1 id="car-title" class="text-sm md:text-base font-semibold text-white tracking-wide truncate max-w-[180px] sm:max-w-xs md:max-w-md">
+                    360° 車內實景賞車
+                </h1>
+                <p id="car-subtitle" class="text-[11px] text-slate-300 font-medium flex items-center gap-1">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    原圖 8K 高解析度渲染中
+                </p>
+            </div>
+        </div>
+
+        <div class="hidden sm:flex glass-panel rounded-2xl px-3.5 py-2 items-center gap-2 text-xs font-medium text-slate-200">
+            <i class="fa-solid fa-arrows-up-down-left-right text-indigo-400"></i>
+            <span>支援 720° 全方位俯仰旋轉</span>
+        </div>
+    </header>
+
+    <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-auto">
+        <div class="glass-panel rounded-full px-4 py-2 flex items-center gap-3 shadow-2xl border border-white/20">
+            <button id="btn-reset" title="重置視角" class="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 active:scale-95 transition text-white">
+                <i class="fa-solid fa-rotate-left text-sm"></i>
+            </button>
+
+            <button id="btn-autorotate" title="自動旋轉" class="w-10 h-10 rounded-full flex items-center justify-center bg-indigo-600/80 hover:bg-indigo-600 active:scale-95 transition text-white">
+                <i id="autorotate-icon" class="fa-solid fa-pause text-sm"></i>
+            </button>
+
+            <div class="h-5 w-[1px] bg-white/20 my-auto"></div>
+
+            <button id="btn-zoom-in" title="放大近看" class="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 active:scale-95 transition text-white">
+                <i class="fa-solid fa-plus text-sm"></i>
+            </button>
+
+            <button id="btn-zoom-out" title="拉遠視角" class="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 active:scale-95 transition text-white">
+                <i class="fa-solid fa-minus text-sm"></i>
+            </button>
+
+            <div class="h-5 w-[1px] bg-white/20 my-auto"></div>
+
+            <button id="btn-fullscreen" title="全螢幕" class="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 active:scale-95 transition text-white">
+                <i class="fa-solid fa-expand text-sm"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="fixed inset-0 z-20 bg-slate-950 flex flex-col items-center justify-center gap-4 transition-opacity duration-500">
+        <div class="relative w-16 h-16">
+            <div class="absolute inset-0 rounded-full border-4 border-indigo-500/20"></div>
+            <div class="absolute inset-0 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin"></div>
+        </div>
+        <div class="text-center space-y-1">
+            <p class="text-base font-medium text-white tracking-wider">載入原圖 360° 全景高畫質...</p>
+            <p class="text-xs text-slate-400">正在獲取最高解析度圖像檔案 (請稍候)</p>
+        </div>
+    </div>
 
     <script>
-        // Extract Google Drive File ID from various link formats
-        function extractDriveFileId(urlOrId) {
-            if (!urlOrId) return null;
-            const str = decodeURIComponent(urlOrId).trim();
+        // Google Drive 圖片直連解析 (附加 =s0 強制輸出原圖最高解析度)
+        function parseGoogleDriveUrl(input) {
+            if (!input) return '';
+            let str = String(input).trim();
 
-            if (/^[a-zA-Z0-9_-]{25,50}$/.test(str)) {
-                return str;
+            const driveMatch = str.match(/(?:file\/d\/|id=|lh3\.googleusercontent\.com\/d\/|uc\?id=)([a-zA-Z0-9_-]{25,})/i) 
+                            || str.match(/\/d\/([a-zA-Z0-9_-]{25,})/i)
+                            || str.match(/id=([a-zA-Z0-9_-]{25,})/i);
+
+            if (driveMatch && driveMatch[1]) {
+                // 加強：=s0 強制要求 Google CDN 傳送原圖原始最高解析度（消除 1600px 縮圖馬賽克）
+                return `https://lh3.googleusercontent.com/d/${driveMatch[1]}=s0`;
             }
 
-            const matchFileD = str.match(/\/file\/d\/([a-zA-Z0-9_-]{25,50})/);
-            if (matchFileD && matchFileD[1]) return matchFileD[1];
+            if (str.includes('imgur.com') && !str.match(/\.(jpg|jpeg|png|webp)$/i)) {
+                return str + '.jpg';
+            }
 
-            const matchIdQuery = str.match(/[?&]id=([a-zA-Z0-9_-]{25,50})/);
-            if (matchIdQuery && matchIdQuery[1]) return matchIdQuery[1];
-
-            const matchLh3 = str.match(/\/d\/([a-zA-Z0-9_-]{25,50})/);
-            if (matchLh3 && matchLh3[1]) return matchLh3[1];
-
-            return null;
+            return str;
         }
 
-        // Initialize Pure 360 Viewer on Window Load
-        window.addEventListener('load', () => {
+        window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
-            const rawUrlParam = urlParams.get('url') || urlParams.get('drive_url') || urlParams.get('panorama');
-            const driveIdParam = urlParams.get('id');
+            const rawUrl = urlParams.get('url') || urlParams.get('id') || urlParams.get('img');
+            const title = urlParams.get('title') || '360° 車內實景賞車';
 
-            // Default fallback scene if no URL parameter is provided
-            let panoramaUrl = 'https://pannellum.org/images/alma.jpg';
-
-            let targetDriveId = null;
-            if (rawUrlParam) {
-                targetDriveId = extractDriveFileId(rawUrlParam);
-                if (!targetDriveId && rawUrlParam.startsWith('http')) {
-                    panoramaUrl = rawUrlParam;
-                }
-            } else if (driveIdParam) {
-                targetDriveId = extractDriveFileId(driveIdParam);
+            if (title) {
+                document.getElementById('car-title').textContent = title;
             }
 
-            if (targetDriveId) {
-                panoramaUrl = `https://lh3.googleusercontent.com/d/${targetDriveId}`;
-            }
+            // 預設圖片 (若無網址參數傳入)
+            const panoramaUrl = rawUrl ? parseGoogleDriveUrl(rawUrl) : 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=3000&q=80';
 
-            // Initialize Pannellum Viewer with zero extra controls/UI
-            pannellum.viewer('panorama', {
+            // 初始化 Pannellum 全景視窗
+            const viewer = pannellum.viewer('panorama', {
                 "type": "equirectangular",
                 "panorama": panoramaUrl,
                 "autoLoad": true,
-                "autoRotate": -1.5,
+                "autoRotate": -1.2,              // 緩慢自動轉動展示
+                "autoRotateInactivityDelay": 4000, // 無操作 4 秒後恢復自動轉動
                 "compass": false,
-                "showZoomCtrl": false,
-                "mouseZoom": true,
-                "hfov": 100,
-                "minHfov": 50,
-                "maxHfov": 120
+                "showControls": false,           // 使用自訂 UI
+
+                /* 🔻 畫質與防變形黃金透視參數 🔻 */
+                "hfov": 75,                       // 預設人眼自然視角 (75 度)
+                "minHfov": 35,                    // 允許放大近看縫線與儀表板細節
+                "maxHfov": 85,                    // 限制拉最遠極限 (防止魚眼拉扯)
+
+                /* 🔻 解鎖 720° 上下俯仰全視角 (低頭看鞍座、抬頭看天窗) 🔻 */
+                "minPitch": -85,                  // 向下俯視車底腳踏墊極限 (-85度)
+                "maxPitch": 85,                   // 向上仰視天窗頂棚極限 (+85度)
+                "friction": 0.15,                 // 旋轉滑順感
+
+                "onLoad": () => {
+                    const overlay = document.getElementById('loading-overlay');
+                    if (overlay) {
+                        overlay.classList.add('opacity-0');
+                        setTimeout(() => overlay.remove(), 500);
+                    }
+                }
+            });
+
+            let isAutoRotating = true;
+
+            document.getElementById('btn-reset').addEventListener('click', () => {
+                viewer.setPitch(0);
+                viewer.setYaw(0);
+                viewer.setHfov(75);
+            });
+
+            document.getElementById('btn-autorotate').addEventListener('click', () => {
+                const icon = document.getElementById('autorotate-icon');
+                if (isAutoRotating) {
+                    viewer.stopAutoRotate();
+                    icon.className = "fa-solid fa-play text-sm";
+                    isAutoRotating = false;
+                } else {
+                    viewer.startAutoRotate(-1.2);
+                    icon.className = "fa-solid fa-pause text-sm";
+                    isAutoRotating = true;
+                }
+            });
+
+            document.getElementById('btn-zoom-in').addEventListener('click', () => {
+                viewer.setHfov(viewer.getHfov() - 10);
+            });
+
+            document.getElementById('btn-zoom-out').addEventListener('click', () => {
+                viewer.setHfov(viewer.getHfov() + 10);
+            });
+
+            document.getElementById('btn-fullscreen').addEventListener('click', () => {
+                viewer.toggleFullscreen();
             });
         });
     </script>
